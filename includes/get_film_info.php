@@ -1,18 +1,22 @@
 <?php
 
-require_once(__DIR__.'/allocine.class.php');
+if (!file_exists(__DIR__ . "/../api-allocine-helper/api-allocine-helper.php"))
+{
+	echo "git clone --branch fix/new-algo https://github.com/gromez/api-allocine-helper.git api-allocine-helper\n";
+	die();
+}
 
-define('ALLOCINE_PARTNER_KEY', '100043982026');
-define('ALLOCINE_SECRET_KEY', '29d185d98c984a359e6e6f26a0474269');
+require_once __DIR__ . "/../api-allocine-helper/api-allocine-helper.php";
 
-$allocine = new Allocine(ALLOCINE_PARTNER_KEY, ALLOCINE_SECRET_KEY);
+$helper = new AlloHelper;
+$helper->setUtf8Decode(false);
 
-// $result = $allocine->get(27405);
-// echo $result;
-// exit();
-
-
-$films = file(__DIR__.'/films.txt');
+if (!file_exists(__DIR__.'/../films.txt'))
+{
+	echo "List all Allocine URLs in films.txt\n";
+	die();
+}
+$films = file(__DIR__.'/../films.txt');
 
 foreach ($films as $filmURL)
 {
@@ -46,93 +50,109 @@ foreach ($films as $filmURL)
 	
 	$filmsDone[$method . $filmID] = true;
 
-	$result = $allocine->get($filmID, $method);
-	$film = json_decode($result, true);
-
-	$bSuccess = !empty($film[$method]);
-	if (!$bSuccess)
-	{
-		// Retry 2 or 3 times
-		for ($i = 0; $i < 3; $i++)
-		{
-			$result = $allocine->get($filmID, $method);
-			$film = json_decode($result, true);
-			$bSuccess = !empty($film[$method]);
-			if ($bSuccess)
-				break;
-		}
-
-		if (!$bSuccess)
-		{
-			echo "Failed to retrieve info for $filmID\n";
-			print_r($film);
-			continue;
-		}
-	}
-
 	$filmInfo = array();
-	$filmInfo['url'] = trim($filmURL);
 
-	if (isset($film[$method]['title']))
-		$filmInfo['originalTitle'] = $film[$method]['title'];
-	else
-		$filmInfo['originalTitle'] = $film[$method]['originalTitle'];
-
-	if (!empty($film[$method]['poster']['href']))
-		$filmInfo['poster'] = '=IMAGE("'.$film[$method]['poster']['href'].'"; 1)';
-	else
-		$filmInfo['poster'] = '';
-
-	if (isset( $film[$method]['runtime']))
+	$cacheFilename = __DIR__ . '/../cache/' . $method . $filmID . '.json';
+	if (file_exists($cacheFilename))
 	{
-		$duration = $film[$method]['runtime'];
-
-		$hours = floor($duration / 3600);
-		$minutes = floor(($duration - $hours * 3600) / 60);
-	}
-	else if (isset( $film[$method]['formatTime']))
-	{
-		$duration = $film[$method]['formatTime'];
-
-		$hours = floor($duration / 60);
-		$minutes = floor($duration - $hours * 60);
+		$cache = @file_get_contents($cacheFilename);
+		if (!empty($cache))
+		{
+			$filmInfo = json_decode($cache, true);
+			if (empty($filmInfo['url']))
+				$filmInfo = array();
+		}	
 	}
 
-	$filmInfo['duration']  = $hours . 'h' . $minutes . "min";
+	if (empty($filmInfo['url']))
+	{
+		switch ($method) {
+			case 'movie':
+				$movie = $helper->movie( $filmID );
+				$duration = $movie->runtime;
 
-	if (isset($film[$method]['synopsisShort']))
-		$filmInfo['synopsisShort'] = str_replace("\r\n", " ", $film[$method]['synopsisShort']);
-	else
-		$filmInfo['synopsisShort'] = '';
+				$hours = floor($duration / 3600);
+				$minutes = floor(($duration - $hours * 3600) / 60);
+				break;
 
-	if (isset($film[$method]['castingShort']['directors']))
-		$filmInfo['directors'] = $film[$method]['castingShort']['directors'];
-	else if (isset($film[$method]['castingShort']['creators']))
-		$filmInfo['directors'] = $film[$method]['castingShort']['creators'];
-	else
-		$filmInfo['directors'] = '';
+			case 'tvseries':
+				$movie = $helper->tvserie( $filmID, 'small' );
+				$duration = $movie->formatTime;
 
-	$filmInfo['pressRating'] = isset($film[$method]['statistics']['pressRating']) ? str_replace('.', ',', $film[$method]['statistics']['pressRating']) : '';
-	$filmInfo['userRating'] = isset($film[$method]['statistics']['userRating']) ? str_replace('.', ',', $film[$method]['statistics']['userRating']) : '';
+				$hours = floor($duration / 60);
+				$minutes = floor($duration - $hours * 60);			
+				break;
 
-	if (isset($film[$method]['castingShort']['actors']))
-		$filmInfo['actors'] = str_replace("\t", " ", $film[$method]['castingShort']['actors']);
-	else
-		$filmInfo['actors'] = '';
+			default:
+				# code...
+				break;
+			}
+		
+		$filmInfo['url'] = trim($filmURL);
 
-	$filmInfo['genres'] = getArrayStrings($film[$method]['genre']);
+		// print_r($movie);
 
-	if (isset($film[$method]['yearStart']))
-		$filmInfo['productionYear'] = $film[$method]['yearStart'];
-	else
-		$filmInfo['productionYear'] = $film[$method]['productionYear'];
+		if (!empty($movie->title))
+			$filmInfo['originalTitle'] = $movie->title;
+		else
+			$filmInfo['originalTitle'] = $movie->originalTitle;
 
-	$filmInfo['nationality'] = getArrayStrings($film[$method]['nationality']);
+		$posterURL = '';
+		if (get_class($movie->poster) == 'AlloData' && !empty($movie->poster['href']))
+			$posterURL = $movie->poster['href'];
+		else if (get_class($movie->poster) == 'AlloImage')
+			$posterURL = $movie->poster->url();
 
-	if (isset($film[$method]['tag']))
-		$filmInfo['tags'] = getArrayStrings($film[$method]['tag']);
-	else
-		$filmInfo['tags'] = '';
+		if (!empty($posterURL))
+		{
+			$filmInfo['poster'] = '=IMAGE("'. $posterURL .'"; 1)';
+			$filmInfo['poster_url'] = $posterURL;
+		}	
+		else
+		{
+			$filmInfo['poster'] = '';
+			$filmInfo['poster_url'] = '';
+		}
+
+		$filmInfo['duration']  = $hours . 'h' . $minutes . "min";
+
+		if (isset($movie->synopsisShort))
+			$filmInfo['synopsisShort'] = preg_replace('@<[^>]+>@', '', str_replace("\r\n", " ", $movie->synopsisShort));
+		else
+			$filmInfo['synopsisShort'] = '';
+
+		if (isset($movie->castingShort['directors']))
+			$filmInfo['directors'] = $movie->castingShort['directors'];
+		else if (isset($movie->castingShort['creators']))
+			$filmInfo['directors'] = $movie->castingShort['creators'];
+		else
+			$filmInfo['directors'] = '';
+
+		$filmInfo['pressRating'] = isset($movie->statistics['pressRating']) ? str_replace('.', ',', $movie->statistics['pressRating']) : '';
+		$filmInfo['userRating'] = isset($movie->statistics['userRating']) ? str_replace('.', ',', $movie->statistics['userRating']) : '';
+
+		if (isset($movie->castingShort['actors']))
+			$filmInfo['actors'] = str_replace("\t", " ", $movie->castingShort['actors']);
+		else
+			$filmInfo['actors'] = '';
+
+		$filmInfo['genres'] = getArrayStrings($movie->genre);
+
+		if (isset($movie->yearStart))
+			$filmInfo['productionYear'] = $movie->yearStart;
+		else
+			$filmInfo['productionYear'] = $movie->productionYear;
+
+		$filmInfo['nationality'] = getArrayStrings($movie->nationality);
+
+		if (isset($movie->tag))
+			$filmInfo['tags'] = getArrayStrings($movie->tag);
+		else
+			$filmInfo['tags'] = '';
+
+		// save in cache
+		file_put_contents($cacheFilename, json_encode($filmInfo, JSON_THROW_ON_ERROR));
+	}
 
 	echo implode("\t", $filmInfo) . "\n";
 }
