@@ -23,13 +23,18 @@ class film
      *  Sous-titres
      *  Size
      */
-    public function echoAsCSV()
+    public function echoAsCSV($fp = null)
     {
-        echo  $this->filename . "\t" 
-            . $this->maindir . "\t"
-            . $this->subdir . "\t"
-            . date("d/m/y", $this->filedate)."\t"
-            . $this->subtitles . "\t"
-            . $this->filesize . "\n";
+        $row = $this->filename . "\t" 
+                . $this->maindir . "\t"
+                . $this->subdir . "\t"
+                . date("d/m/y", $this->filedate)."\t"
+                . $this->subtitles . "\t"
+                . $this->filesize . "\n";
+
+        if (!empty($fp))
+            fwrite($fp, $row);
+        else
+            echo  $row;
     }
 }

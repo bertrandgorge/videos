@@ -9,17 +9,24 @@ class Reader
         $this->films = array();
     }
 
-    
     // Recursively reads a folder, and for each film, construct a list of films
     public function echoFilms()
     {
         if (empty($this->films))
             $this->analyse();
 
+        $filename = dirname(__DIR__) . '/out/all_videos.txt';
+
+        $fp = fopen($filename, 'a');
+
+        if (empty($fp)) die();
+
+        fwrite($fp, "\n\n\n");
+
         foreach ($this->films as $film)
-        {
-            $film->echoAsCSV();
-        }
+            $film->echoAsCSV($fp);
+
+        fclose($fp);
     }
 
 
