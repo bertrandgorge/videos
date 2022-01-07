@@ -1,0 +1,13 @@
+{
+    "name": "bertrand/videos",
+    "type": "project",
+    "require": {
+
+    },
+    "authors": [
+        {
+            "name": "Bertrand Gorge",
+            "email": "bertrand.gorge@gmail.com"
+        }
+    ]
+}
