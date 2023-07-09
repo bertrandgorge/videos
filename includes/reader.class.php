@@ -10,10 +10,10 @@ class Reader
     }
 
     // Recursively reads a folder, and for each film, construct a list of films
-    public function echoFilms()
+    public function echoFilms($dossier)
     {
         if (empty($this->films))
-            $this->analyse();
+            $this->analyse($dossier);
 
         $filename = dirname(__DIR__) . '/out/all_videos.txt';
 
@@ -24,14 +24,14 @@ class Reader
         fwrite($fp, "\n\n\n");
 
         foreach ($this->films as $film)
-            $film->echoAsCSV($fp);
+            $film->echoAsCSV($dossier, $fp);
 
         fclose($fp);
     }
 
 
     // Recursively reads a folder, and for each film, construct a list of films
-    protected function analyse()
+    protected function analyse($dossier)
     {
 
     }
@@ -78,5 +78,5 @@ class Reader
 
         return false;
     }
-    
+
 }

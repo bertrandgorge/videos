@@ -37,7 +37,7 @@ foreach ($films as $filmURL)
 		$filmID = $matches[1][0];
 		$method = 'tvseries';
 	}
-	
+
 	if (empty($filmID))
 	{
 		// echo "Failed to match $filmURL\n";
@@ -47,7 +47,7 @@ foreach ($films as $filmURL)
 	// Avoid duplicates
 	if (isset($filmsDone[$method . $filmID]))
 		continue;
-	
+
 	$filmsDone[$method . $filmID] = true;
 
 	$filmInfo = array();
@@ -61,7 +61,7 @@ foreach ($films as $filmURL)
 			$filmInfo = json_decode($cache, true);
 			if (empty($filmInfo['url']))
 				$filmInfo = array();
-		}	
+		}
 	}
 
 	if (empty($filmInfo['url']))
@@ -80,14 +80,14 @@ foreach ($films as $filmURL)
 				$duration = $movie->formatTime;
 
 				$hours = floor($duration / 60);
-				$minutes = floor($duration - $hours * 60);			
+				$minutes = floor($duration - $hours * 60);
 				break;
 
 			default:
 				# code...
 				break;
 			}
-		
+
 		$filmInfo['url'] = trim($filmURL);
 
 		// print_r($movie);
@@ -107,7 +107,7 @@ foreach ($films as $filmURL)
 		{
 			$filmInfo['poster'] = '=IMAGE("'. $posterURL .'"; 1)';
 			$filmInfo['poster_url'] = $posterURL;
-		}	
+		}
 		else
 		{
 			$filmInfo['poster'] = '';
@@ -152,6 +152,10 @@ foreach ($films as $filmURL)
 
 		// save in cache
 		file_put_contents($cacheFilename, json_encode($filmInfo, JSON_THROW_ON_ERROR));
+
+		echo "Got info from $filmURL\n";
+
+		sleep(2);
 	}
 
 	echo implode("\t", $filmInfo) . "\n";

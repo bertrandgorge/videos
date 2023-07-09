@@ -1,6 +1,6 @@
 <?php
 
-class film 
+class film
 {
     private $filename, $maindir, $subdir, $filedate, $subtitles, $filesize;
 
@@ -23,11 +23,12 @@ class film
      *  Sous-titres
      *  Size
      */
-    public function echoAsCSV($fp = null)
+    public function echoAsCSV($support, $fp = null)
     {
-        $row = $this->filename . "\t" 
+        $row = $this->filename . "\t"
                 . $this->maindir . "\t"
                 . $this->subdir . "\t"
+                . $support . "\t"
                 . date("d/m/y", $this->filedate)."\t"
                 . $this->subtitles . "\t"
                 . $this->filesize . "\n";

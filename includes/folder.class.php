@@ -33,13 +33,13 @@ class folderReader extends Reader
         $this->paths[] = $this->rootFolder."*/*/*/*.{".$exts."}";
     }
 
-    protected function analyse()
+    protected function analyse($dossier)
     {
         foreach ($this->paths as $globPath)
-            $this->matchMovies($globPath);
+            $this->matchMovies($globPath, $dossier);
     }
 
-    private function matchMovies($globPath)
+    private function matchMovies($globPath, $dossier)
     {
         echo "Looking for files in $globPath \n";
         $files = glob($globPath, GLOB_BRACE);
@@ -54,6 +54,9 @@ class folderReader extends Reader
             $maindir = preg_replace('@/.*@', '', $path);
             $subDir =  str_replace($maindir, '', $path);
             $subDir =  trim($subDir, '/');
+
+            if (empty($subDir))
+                $subDir = $dossier;
 
             if ($maindir == '$RECYCLE.BIN')
                 continue;

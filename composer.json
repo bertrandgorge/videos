@@ -2,7 +2,7 @@
     "name": "bertrand/videos",
     "type": "project",
     "require": {
-
+        "imdbphp/imdbphp": "^8.1"
     },
     "authors": [
         {
