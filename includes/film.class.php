@@ -2,9 +2,9 @@
 
 class film
 {
-    private $filename, $maindir, $subdir, $filedate, $subtitles, $filesize;
+    private $filename, $maindir, $subdir, $filedate, $subtitles, $filesize, $filepath;
 
-    public function __construct($filename, $maindir, $subdir, $filedate, $subtitles, $filesize)
+    public function __construct($filename, $maindir, $subdir, $filedate, $subtitles, $filesize, $filepath)
     {
         $this->filename = $filename;
         $this->maindir = $maindir;
@@ -12,6 +12,7 @@ class film
         $this->filedate = $filedate;
         $this->subtitles = !empty($subtitles) ? 'srt' : '';
         $this->filesize = $filesize;
+        $this->filepath = $filepath;
     }
 
     /**
@@ -31,7 +32,8 @@ class film
                 . $support . "\t"
                 . date("d/m/y", $this->filedate)."\t"
                 . $this->subtitles . "\t"
-                . $this->filesize . "\n";
+                . $this->filesize . "\t"
+                . $this->filepath . "\n";
 
         if (!empty($fp))
             fwrite($fp, $row);

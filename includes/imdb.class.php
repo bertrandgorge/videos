@@ -74,7 +74,14 @@ class imdb
         $film['Pas trop long'] = $film['Durée'] < 120 ? 'Oui' : 'Non';
 
         $cacheFilename = __DIR__ . '/../cache/imdb' . $title->imdbid() . '.json';
-        file_put_contents($cacheFilename, json_encode($film, JSON_THROW_ON_ERROR));
+
+        try {
+            file_put_contents($cacheFilename, json_encode($film, JSON_THROW_ON_ERROR));
+        } catch (Exception $e) {
+            echo 'Problème d\'encodage JSON: ',  $e->getMessage(), "\n";
+            print_r($film);
+            exit();
+        }
 
         return $film;
     }
@@ -102,27 +109,33 @@ class imdb
 
         $search = new \Imdb\TitleSearch(self::$config);
 
-        $results = $search->search($titleToSearch, array(\Imdb\TitleSearch::MOVIE)); // Optional second parameter restricts types returned
+        try {
+            $results = $search->search($titleToSearch, array(\Imdb\TitleSearch::MOVIE)); // Optional second parameter restricts types returned
 
-        foreach ($results as $title)
-        {
-            $genre = $title->genre();
+            foreach ($results as $title)
+            {
+                $genre = $title->genre();
 
-            switch ($genre) {
-                case '':
-                case 'Court-métrage':
-                case 'Talk-show':
-                    continue 2;
+                switch ($genre) {
+                    case '':
+                    case 'Court-métrage':
+                    case 'Talk-show':
+                        continue 2;
 
-                default:
-                    break;
+                    default:
+                        break;
+                }
+
+                if ($title->votes() == 0)
+                    continue;
+
+                self::$cachedURLs[$this->filename] = $title->main_url();
+                return $title;
             }
-
-            if ($title->votes() == 0)
-                continue;
-
-            self::$cachedURLs[$this->filename] = $title->main_url();
-            return $title;
+        } catch (Exception $e) {
+            echo 'Problème recherche IMDB: ',  $e->getMessage(), "\n";
+            print_r($this->filename);
+            exit();
         }
 
         self::$cachedURLs[$this->filename] = '';

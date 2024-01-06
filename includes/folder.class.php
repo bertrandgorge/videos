@@ -31,6 +31,8 @@ class folderReader extends Reader
         $this->paths[] = $this->rootFolder."*/*.{".$exts."}";
         $this->paths[] = $this->rootFolder."*/*/*.{".$exts."}";
         $this->paths[] = $this->rootFolder."*/*/*/*.{".$exts."}";
+        $this->paths[] = $this->rootFolder."*/*/*/*/*.{".$exts."}";
+        $this->paths[] = $this->rootFolder."*/*/*/*/*/*.{".$exts."}";
     }
 
     protected function analyse($dossier)
@@ -69,7 +71,7 @@ class folderReader extends Reader
             // get the dir size
             $filesize = round($this->filsize_32b($filepath) / 1024 / 1000);
 
-            $this->films[] = new film(basename($filepath), $maindir, $subDir, filemtime($filepath), $subtitles, $filesize);
+            $this->films[] = new film(basename($filepath), $maindir, $subDir, filemtime($filepath), $subtitles, $filesize, dirname($filepath));
         }
     }
 
