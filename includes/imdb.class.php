@@ -23,6 +23,9 @@ class imdb
     {
         $title = $this->findFilmForFilename();
 
+        if ($title == 'ignored')
+            return 'ignored';
+
         if (empty($title))
             return false;
 
@@ -94,8 +97,10 @@ class imdb
 
             $movieId = false;
             $matches = array();
-            if (preg_match('@tt([0-9]+)/@', $url, $matches))
+            if (preg_match('@tt([0-9]+)[/]*@', $url, $matches))
                 $movieId = $matches[1];
+            else
+                return 'ignored';
 
             return $movieId;
         }

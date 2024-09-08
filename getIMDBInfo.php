@@ -56,21 +56,28 @@ foreach ($moviesFiles as $k => $aMovieFile)
         continue;
 
     $movieFileInfo = explode("\t", $aMovieFile);
+    $dateAjout = $movieFileInfo[4] ?? '01/01/1970';
 
     $filename = $movieFileInfo[0];
 
     $imdbfilm = new imdb($filename);
     $film = $imdbfilm->getFilmInfo();
 
-    if (empty($film))
+    if ($film == 'ignored')
         continue;
+
+    if (empty($film))
+    {
+        echo "$filename\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t$dateAjout\n";
+        continue;
+    }
 
     if (isset($imdb_ids[$film['URL']]))
         continue;
 
     $imdb_ids[$film['URL']] = true;
 
-    $film['Date d\'ajout'] = $movieFileInfo[4] ?? '01/01/1970';
+    $film['Date d\'ajout'] = $dateAjout;
     $film['Nom du fichier'] = $filename;
 
     $film['Support'] = $movieFileInfo[3] ?? '';
