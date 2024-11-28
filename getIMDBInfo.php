@@ -58,6 +58,10 @@ foreach ($moviesFiles as $k => $aMovieFile)
     $movieFileInfo = explode("\t", $aMovieFile);
     $dateAjout = $movieFileInfo[4] ?? '01/01/1970';
 
+    $filesize = $movieFileInfo[6] ?? 0;
+    if ($filesize > 0 && $filesize < 200)
+        continue; // Sample file
+
     $filename = $movieFileInfo[0];
 
     $imdbfilm = new imdb($filename);
@@ -80,8 +84,16 @@ foreach ($moviesFiles as $k => $aMovieFile)
     $film['Date d\'ajout'] = $dateAjout;
     $film['Nom du fichier'] = $filename;
 
-    $film['Support'] = $movieFileInfo[3] ?? '';
-    $film['Dossier'] = $movieFileInfo[1] ?? '';
+    if (!empty($movieFileInfo[4]))
+    {
+        $film['Support'] = $movieFileInfo[3] ?? '';
+        $film['Dossier'] = $movieFileInfo[1] ?? '';
+    }
+    else
+    {
+        $film['Support'] = '';
+        $film['Dossier'] = '';
+    }        
 
     $film['Titre'] = str_replace('&apos;', "'", html_entity_decode($film['Titre']));
     $film['Poster URL'] = '=image("'.$film['Poster URL'].'")';
