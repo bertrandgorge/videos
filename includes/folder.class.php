@@ -21,7 +21,7 @@ class folderReader extends Reader
     /**
      * Call with a folder with a trailing slash
      */
-    public function __construct($rootFolder) {
+    public function __construct($dossier, $rootFolder) {
         $this->films = array();
         $this->rootFolder = rtrim(str_replace('\\', '/', $rootFolder), '/') . '/';
 
@@ -33,12 +33,16 @@ class folderReader extends Reader
         $this->paths[] = $this->rootFolder."*/*/*/*.{".$exts."}";
         $this->paths[] = $this->rootFolder."*/*/*/*/*.{".$exts."}";
         $this->paths[] = $this->rootFolder."*/*/*/*/*/*.{".$exts."}";
+
+        parent::__construct($dossier);
     }
 
     protected function analyse($dossier)
     {
-        foreach ($this->paths as $globPath)
+        foreach ($this->paths as $globPath) {
             $this->matchMovies($globPath, $dossier);
+            $this->echoFilms();
+        }
     }
 
     private function matchMovies($globPath, $dossier)

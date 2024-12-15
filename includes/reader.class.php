@@ -4,17 +4,18 @@ include_once 'film.class.php';
 class Reader
 {
     protected $films;
+    protected $dossier;
 
-    public function __construct() {
+    public function __construct($dossier) {
         $this->films = array();
+        $this->dossier = $dossier;
+
+        $this->analyse($this->dossier);
     }
 
     // Recursively reads a folder, and for each film, construct a list of films
-    public function echoFilms($dossier)
+    public function echoFilms()
     {
-        if (empty($this->films))
-            $this->analyse($dossier);
-
         $filename = dirname(__DIR__) . '/out/all_videos.txt';
 
         $fp = fopen($filename, 'a');
@@ -24,11 +25,23 @@ class Reader
         fwrite($fp, "\n\n\n");
 
         foreach ($this->films as $film)
-            $film->echoAsCSV($dossier, $fp);
+            $film->echoAsCSV($this->dossier, $fp);
+
+        $this->films = [];
 
         fclose($fp);
     }
 
+    static public function truncate()
+    {
+        $filename = dirname(__DIR__) . '/out/all_videos.txt';
+
+        $fp = fopen($filename, 'w');
+
+        if (empty($fp)) die();
+
+        fclose($fp);
+    }
 
     // Recursively reads a folder, and for each film, construct a list of films
     protected function analyse($dossier)
