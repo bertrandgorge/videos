@@ -3,6 +3,7 @@
 class imdb
 {
     static private $cachedURLs = array();
+    static private $fp = null;
     static private $config = null;
     private $filename = '';
 
@@ -178,5 +179,24 @@ class imdb
             $filecontent .= "$k\t$v\n";
 
         file_put_contents($matchCache, $filecontent);
+    }
+
+    static public function writeRow($str)
+    {
+        $filename = __DIR__ . '/../out/imdbinfo.txt';
+
+        if (empty(self::$fp)) {
+            self::$fp = fopen($filename, 'w');
+
+            if (empty(self::$fp)) die();
+
+            fwrite(self::$fp, $str);
+            fflush(self::$fp);
+        }
+    }
+
+    static public function closeFile()
+    {
+        fclose(self::$fp);
     }
 }

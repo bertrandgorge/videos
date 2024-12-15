@@ -72,7 +72,7 @@ foreach ($moviesFiles as $k => $aMovieFile)
 
     if (empty($film))
     {
-        echo "$filename\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t$dateAjout\n";
+        imdb::writeRow("$filename\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t$dateAjout\n");
         continue;
     }
 
@@ -93,7 +93,7 @@ foreach ($moviesFiles as $k => $aMovieFile)
     {
         $film['Support'] = '';
         $film['Dossier'] = '';
-    }        
+    }
 
     $film['Titre'] = str_replace('&apos;', "'", html_entity_decode($film['Titre']));
     $film['Poster URL'] = '=image("'.$film['Poster URL'].'")';
@@ -111,15 +111,16 @@ foreach ($moviesFiles as $k => $aMovieFile)
     $film['Durée'] = $hours . 'h' . $minutes;
 
     foreach ($columns as $key)
-        echo $film[$key] . "\t";
+        imdb::writeRow($film[$key] . "\t");
 
-    echo "\n";
+    imdb::writeRow("\n");
 
     if ($k % 10 == 0)
         imdb::saveCachedURLs();
 }
 
 imdb::saveCachedURLs();
+imdb::closeFile();
 
 exit();
 
