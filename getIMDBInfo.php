@@ -12,37 +12,11 @@ if (!file_exists($filename))
     exit();
 }
 
-$columns = [
-    'URL',
-    'Titre',
-    'Titre FR',
-    'Poster URL',
-    'Durée',
-    'Synopsis',
-    'Réalisateur',
-    'Presse',
-    'metacriticRating',
-    'Spectateurs',
-    'Acteurs',
-    'Genre',
-    'Année',
-    'Pays',
-    'Mots clés',
-    'Pas trop long',
-    'Date d\'ajout',
-    'Nom du fichier',
-    'Support',
-    'Dossier'];
-
-echo implode("\t", $columns) . "\n";
+imdb::printColumns();
 
 $imdb_ids = array();
 
 $moviesFiles = file($filename);
-
-$matchCache = __DIR__ . '/out/imdb_urls.txt';
-if (file_exists($matchCache))
-    $moviesFiles = array_merge($moviesFiles, file($matchCache));
 
 
 $matchCache = __DIR__ . '/out/Vieilles videos.txt';
@@ -51,75 +25,44 @@ if (file_exists($matchCache))
 
 foreach ($moviesFiles as $k => $aMovieFile)
 {
-    $aMovieFile = trim($aMovieFile);
-    if ($aMovieFile == '')
-        continue;
-
-    $movieFileInfo = explode("\t", $aMovieFile);
-    $dateAjout = $movieFileInfo[4] ?? '01/01/1970';
-
-    $filesize = $movieFileInfo[6] ?? 0;
-    if ($filesize > 0 && $filesize < 200)
-        continue; // Sample file
-
-    $filename = $movieFileInfo[0];
-
-    $imdbfilm = new imdb($filename);
-    $film = $imdbfilm->getFilmInfo();
-
-    if ($film == 'ignored')
-        continue;
-
+    $film = imdb::findInfoForFilename($aMovieFile);
     if (empty($film))
-    {
-        imdb::writeRow("$filename\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t$dateAjout\n");
-        continue;
-    }
-
-    if (isset($imdb_ids[$film['URL']]))
         continue;
 
-    $imdb_ids[$film['URL']] = true;
+    if (!empty($film['URL']) && isset($imdb_ids[$film['URL']]))
+        continue;
 
-    $film['Date d\'ajout'] = $dateAjout;
-    $film['Nom du fichier'] = $filename;
+    if (!empty($film['URL']))
+        $imdb_ids[$film['URL']] = true;
 
-    if (!empty($movieFileInfo[4]))
-    {
-        $film['Support'] = $movieFileInfo[3] ?? '';
-        $film['Dossier'] = $movieFileInfo[1] ?? '';
-    }
-    else
-    {
-        $film['Support'] = '';
-        $film['Dossier'] = '';
-    }
-
-    $film['Titre'] = str_replace('&apos;', "'", html_entity_decode($film['Titre']));
-    $film['Poster URL'] = '=image("'.$film['Poster URL'].'")';
-    $film['Presse'] = str_replace('.', ',', $film['Presse']);
-
-    if ($film['Durée'] < 105)
-        $film['Pas trop long'] = "Court";
-    else if ($film['Durée'] < 120)
-        $film['Pas trop long'] = "Moyen";
-    else
-        $film['Pas trop long'] = "Long";
-
-    $hours = floor($film['Durée'] / 60);
-    $minutes = $film['Durée'] - $hours * 60;
-    $film['Durée'] = $hours . 'h' . $minutes;
-
-    foreach ($columns as $key)
-        imdb::writeRow($film[$key] . "\t");
-
-    imdb::writeRow("\n");
+    imdb::printInfo($film);
 
     if ($k % 10 == 0)
         imdb::saveCachedURLs();
 }
 
 imdb::saveCachedURLs();
+
+$matchCache = __DIR__ . '/out/imdb_urls.txt';
+if (file_exists($matchCache)) {
+    $cachedFilms = file($matchCache);
+    foreach ($cachedFilms as $row) {
+        $parts = explode("\t", $row);
+        if (!isset($parts[1]))
+            continue;
+
+        $imdbfilm = new imdb($parts[0]);
+        $film = $imdbfilm->getFilmInfo($parts[1]);
+
+        if (isset($imdb_ids[$film['URL']]))
+            continue;
+
+        $imdb_ids[$film['URL']] = true;
+
+        imdb::printInfo($film);
+    }
+}
+
 imdb::closeFile();
 
 exit();
