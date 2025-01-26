@@ -23,6 +23,7 @@ $matchCache = __DIR__ . '/out/Vieilles videos.txt';
 if (file_exists($matchCache))
     $moviesFiles = array_merge($moviesFiles, file($matchCache));
 
+echo "Found ".count($moviesFiles)." movies in the list built from disk...\n";
 foreach ($moviesFiles as $k => $aMovieFile)
 {
     $film = imdb::findInfoForFilename($aMovieFile);
@@ -39,6 +40,9 @@ foreach ($moviesFiles as $k => $aMovieFile)
 
     if ($k % 10 == 0)
         imdb::saveCachedURLs();
+
+    if ($k % 100 == 0)
+        echo "$k movies processed\n";
 }
 
 imdb::saveCachedURLs();
@@ -46,6 +50,10 @@ imdb::saveCachedURLs();
 $matchCache = __DIR__ . '/out/imdb_urls.txt';
 if (file_exists($matchCache)) {
     $cachedFilms = file($matchCache);
+
+    $count = count($cachedFilms);
+    echo "Also found $count movies in the cache...\n";
+
     foreach ($cachedFilms as $row) {
         $parts = explode("\t", $row);
         if (!isset($parts[1]))
@@ -60,6 +68,9 @@ if (file_exists($matchCache)) {
         $imdb_ids[$film['URL']] = true;
 
         imdb::printInfo($film);
+        $k++;
+        if ($k % 100 == 0)
+            echo "$k movies processed\n";
     }
 }
 

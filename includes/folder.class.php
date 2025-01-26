@@ -39,16 +39,22 @@ class folderReader extends Reader
 
     protected function analyse($dossier)
     {
+        $count  0;
+
         foreach ($this->paths as $globPath) {
-            $this->matchMovies($globPath, $dossier);
+            $count += $this->matchMovies($globPath, $dossier);
             $this->echoFilms();
         }
+
+        echo "Found a total of ".$count." films...\n";
     }
 
     private function matchMovies($globPath, $dossier)
     {
         echo "Looking for files in $globPath \n";
         $files = glob($globPath, GLOB_BRACE);
+
+        echo "Found " . count($files) . " files\n";
 
         foreach ($files as $filepath)
         {
@@ -77,6 +83,8 @@ class folderReader extends Reader
 
             $this->films[] = new film(basename($filepath), $maindir, $subDir, filemtime($filepath), $subtitles, $filesize, dirname($filepath));
         }
+
+        return count($this->films);
     }
 
     private function filsize_32b($file)
