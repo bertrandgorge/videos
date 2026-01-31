@@ -75,12 +75,17 @@ class imdb
         if (is_scalar($title))
         {
             $cacheFilename = __DIR__ . '/../cache/imdb' . $title . '.json';
-            if (file_exists($cacheFilename))
+            if (file_exists($cacheFilename)) //  && $title != '30988739')
             {
                 $cache = file_get_contents($cacheFilename);
                 if (!empty($cache))
                 {
                     $film = json_decode($cache, true);
+
+                    if (empty($film['Acteurs']) || empty($film['Réalisateur'])) {
+                        echo "No actors for ".$title."\n";
+                        $film = array(); // force re-fetch
+                    }                    
                 }
             }
 
@@ -89,6 +94,8 @@ class imdb
         }
 
         if (empty($film['URL'])) {
+
+            echo "Getting IMDB info for ".$title->title()."\n";
 
             $film['URL'] = $title->main_url();
             $film['Titre'] = $title->orig_title();
@@ -107,8 +114,13 @@ class imdb
             $film['Not found'] = false;
 
             $directors = array();
-            foreach ($title->director() as $director)
+
+            try {
+                foreach ($title->director() as $director)
                 $directors[] = $director['name'];
+            } catch (\Throwable $th) {
+
+            }
             $film['Réalisateur'] = implode(', ', $directors);
 
             $actors = array();
@@ -271,10 +283,6 @@ class imdb
 
     static public function findInfoForFilename($fileRow)
     {
-        $aMovieFile = trim($fileRow);
-        if ($aMovieFile == '')
-            return null;
-
         $movieFileInfo = explode("\t", $fileRow);
         $dateAjout = $movieFileInfo[4] ?? '01/01/1970';
 

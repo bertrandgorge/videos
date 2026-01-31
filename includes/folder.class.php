@@ -39,7 +39,7 @@ class folderReader extends Reader
 
     protected function analyse($dossier)
     {
-        $count  0;
+        $count = 0;
 
         foreach ($this->paths as $globPath) {
             $count += $this->matchMovies($globPath, $dossier);

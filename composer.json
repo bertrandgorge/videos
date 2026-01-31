@@ -2,12 +2,27 @@
     "name": "bertrand/videos",
     "type": "project",
     "require": {
-        "imdbphp/imdbphp": "^8.1"
+        "imdbphp/imdbphp": "^8.3"
     },
     "authors": [
         {
             "name": "Bertrand Gorge",
             "email": "bertrand.gorge@gmail.com"
         }
-    ]
+    ],
+    "require-dev": {
+        "cweagans/composer-patches": "^2.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "cweagans/composer-patches": true
+        }
+    },
+    "extra": {
+        "patches": {
+            "imdbphp/imdbphp": {
+                "Fix PSR-16 compatibility with PHP 8.3": "patches/imdbphp-cache-psr16-compat.patch"
+            }
+        }
+    }
 }

@@ -26,6 +26,10 @@ if (file_exists($matchCache))
 echo "Found ".count($moviesFiles)." movies in the list built from disk...\n";
 foreach ($moviesFiles as $k => $aMovieFile)
 {
+    $aMovieFile = trim($aMovieFile);
+    if (empty($aMovieFile))
+        continue;
+
     $film = imdb::findInfoForFilename($aMovieFile);
     if (empty($film))
         continue;
