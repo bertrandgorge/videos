@@ -1,0 +1,59 @@
+--- a/src/Imdb/Cache.php
++++ b/src/Imdb/Cache.php
+@@ -51,7 +51,7 @@ class Cache implements CacheInterface
+     /**
+      * @inheritdoc
+      */
+-    public function get($key, $default = null)
++    public function get(string $key, mixed $default = null): mixed
+     {
+         if (!$this->config->usecache) {
+             return $default;
+@@ -89,7 +89,7 @@ class Cache implements CacheInterface
+     /**
+      * @inheritdoc
+      */
+-    public function set($key, $value, $ttl = null)
++    public function set(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool
+     {
+         if (!$this->config->storecache) {
+             return false;
+@@ -152,32 +152,32 @@ class Cache implements CacheInterface
+     }
+ 
+     // Some empty functions so we match the interface. These will never be used
+-    public function getMultiple($keys, $default = null)
++    public function getMultiple(iterable $keys, mixed $default = null): iterable
+     {
+         return [];
+     }
+ 
+-    public function clear()
++    public function clear(): bool
+     {
+         return false;
+     }
+ 
+-    public function delete($key)
++    public function delete(string $key): bool
+     {
+         return false;
+     }
+ 
+-    public function deleteMultiple($keys)
++    public function deleteMultiple(iterable $keys): bool
+     {
+         return false;
+     }
+ 
+-    public function has($key)
++    public function has(string $key): bool
+     {
+         return false;
+     }
+ 
+-    public function setMultiple($values, $ttl = null)
++    public function setMultiple(iterable $values, null|int|\DateInterval $ttl = null): bool
+     {
+         return false;
+     }

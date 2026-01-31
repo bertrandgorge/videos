@@ -1,0 +1,17 @@
+{
+    "_hash": "8ae47e7bf32c8a3fce1ea1ddc76a6a6190abfa92ce01661d3145b8522df60866",
+    "patches": {
+        "imdbphp/imdbphp": [
+            {
+                "package": "imdbphp/imdbphp",
+                "description": "Fix PSR-16 compatibility with PHP 8.3",
+                "url": "patches/imdbphp-cache-psr16-compat.patch",
+                "sha256": "3828a6bd33bcea859d96dc01a8af88e457e7105e19e1c0224bd8b1c5fcbe89ff",
+                "depth": 1,
+                "extra": {
+                    "provenance": "root"
+                }
+            }
+        ]
+    }
+}
