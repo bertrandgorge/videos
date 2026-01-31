@@ -4,7 +4,7 @@ class imdb
 {
     static private $cachedURLs = array();
     static private $fp = null;
-    static private $config = null;
+    static private $imdbApi = null;
     static private $columns = [];
 
     private $filename = '';
@@ -13,10 +13,9 @@ class imdb
     {
         $this->filename = trim($filename);
 
-        if (empty(self::$config))
+        if (empty(self::$imdbApi))
         {
-            self::$config = new \Imdb\Config();
-            self::$config->language = 'fr-FR,fr,en';
+            self::$imdbApi = new \hmerritt\Imdb();
         }
 
         imdb::getCachedURLs();
@@ -51,86 +50,100 @@ class imdb
 
     public function getFilmInfo($url = false)
     {
-        $title = '';
+        $imdbId = '';
         $match = array();
         if (!empty($url)) {
             if (preg_match('@tt([0-9]+)@', $url, $match)) {
-                $title = $match[1];
+                $imdbId = 'tt' . $match[1];
             }
             else
                 return ['ignored' => true, 'URL' => $this->filename];
         }
 
-        if (empty($title))
-            $title = $this->findFilmForFilename();
+        if (empty($imdbId))
+            $imdbId = $this->findFilmForFilename();
 
-        if ($title == 'ignored')
+        if ($imdbId == 'ignored')
             return ['ignored' => true, 'URL' => $this->filename];
 
-        if (empty($title))
+        if (empty($imdbId))
             return ['Not found' => true, 'URL' => $this->filename];
 
         $film = array();
 
-        if (is_scalar($title))
+        if (is_scalar($imdbId))
         {
-            $cacheFilename = __DIR__ . '/../cache/imdb' . $title . '.json';
-            if (file_exists($cacheFilename)) //  && $title != '30988739')
+            $cacheFilename = __DIR__ . '/../cache/imdb' . str_replace('tt', '', $imdbId) . '.json';
+            if (file_exists($cacheFilename))
             {
                 $cache = file_get_contents($cacheFilename);
                 if (!empty($cache))
                 {
                     $film = json_decode($cache, true);
 
-                    if (empty($film['Acteurs']) || empty($film['Réalisateur'])) {
-                        echo "No actors for ".$title."\n";
+                    if (empty($film['Acteurs'])) {
+                        echo "No actors for ".$imdbId."\n";
                         $film = array(); // force re-fetch
                     }                    
                 }
             }
-
-            if (empty($film['URL']))
-                $title = new \Imdb\Title($title, self::$config);
         }
 
         if (empty($film['URL'])) {
+            // Fetch from IMDB using new API
+            $filmData = self::$imdbApi->film($imdbId, [
+                'curlHeaders' => ['Accept-Language: fr-FR,fr,en;q=0.5'],
+                'cache' => false // We manage our own cache
+            ]);
 
-            echo "Getting IMDB info for ".$title->title()."\n";
+            if (empty($filmData) || empty($filmData['title'])) {
+                return ['Not found' => true, 'URL' => $this->filename];
+            }
 
-            $film['URL'] = $title->main_url();
-            $film['Titre'] = $title->orig_title();
-            $film['Titre FR'] = $title->title();
-            $film['Presse'] = str_replace('.', ',', $title->rating());
-            $film['Spectateurs'] = $title->votes();
-            $film['metacriticRating'] = $title->metacriticRating();
-            $film['Mots clés'] = implode(', ', $title->keywords());
-            $film['Pays'] = implode(', ', $title->country());
-            $film['Genre'] = $title->genre();
-            $film['Poster URL'] = $title->photo();
-            $film['Durée'] = $title->runtime();
+            echo "Getting IMDB info for ".$filmData['title']."\n";
+
+            $film['URL'] = 'https://www.imdb.com/title/' . $imdbId . '/';
+            $film['Titre'] = $filmData['title'] ?? '';
+            $film['Titre FR'] = $filmData['title'] ?? '';
+            $film['Presse'] = str_replace('.', ',', $filmData['rating'] ?? '');
+            $film['Spectateurs'] = $filmData['rating_votes'] ?? '';
+            $film['metacriticRating'] = '';
+            $film['Mots clés'] = '';
+            $film['Pays'] = '';
+            $film['Genre'] = implode(', ', $filmData['genres'] ?? []);
+            $film['Poster URL'] = $filmData['poster'] ?? '';
+            $film['Durée'] = $filmData['length'] ?? '';
             $film['Poster'] = '';
-            $film['Synopsis'] = implode(" ", $title->plot());
+            $film['Synopsis'] = $filmData['plot'] ?? '';
             $film['ignored'] = false;
             $film['Not found'] = false;
 
             $directors = array();
-
-            try {
-                foreach ($title->director() as $director)
-                $directors[] = $director['name'];
-            } catch (\Throwable $th) {
-
+            if (!empty($filmData['cast'])) {
+                foreach ($filmData['cast'] as $castMember) {
+                    if (stripos($castMember['character'] ?? '', 'director') !== false || 
+                        stripos($castMember['character'] ?? '', 'réalisateur') !== false) {
+                        $directors[] = $castMember['actor'];
+                    }
+                }
             }
             $film['Réalisateur'] = implode(', ', $directors);
 
             $actors = array();
-            foreach ($title->actor_stars() as $actor)
-                $actors[] = $actor['name'];
-
+            if (!empty($filmData['cast'])) {
+                $count = 0;
+                foreach ($filmData['cast'] as $castMember) {
+                    if ($count >= 5) break; // Limit to 5 actors
+                    if (stripos($castMember['character'] ?? '', 'director') === false) {
+                        $actors[] = $castMember['actor'];
+                        $count++;
+                    }
+                }
+            }
             $film['Acteurs'] = implode(', ', $actors);
-            $film['Année'] = $title->year();
+            $film['Année'] = $filmData['year'] ?? '';
 
-            $cacheFilename = __DIR__ . '/../cache/imdb' . $title->imdbid() . '.json';
+            $cacheFilename = __DIR__ . '/../cache/imdb' . str_replace('tt', '', $imdbId) . '.json';
 
             try {
                 file_put_contents($cacheFilename, json_encode($film, JSON_THROW_ON_ERROR));
@@ -178,7 +191,7 @@ class imdb
             $movieId = false;
             $matches = array();
             if (preg_match('@tt([0-9]+)[/]*@', $url, $matches))
-                $movieId = $matches[1];
+                $movieId = 'tt' . $matches[1];
             else
                 return 'ignored';
 
@@ -192,30 +205,54 @@ class imdb
         $titleToSearch = preg_replace('@\[[^]]+\]@', '', $titleToSearch); // remove anything in []
         $titleToSearch = str_replace('.', ' ', trim($titleToSearch));
 
-        $search = new \Imdb\TitleSearch(self::$config);
-
         try {
-            $results = $search->search($titleToSearch, array(\Imdb\TitleSearch::MOVIE)); // Optional second parameter restricts types returned
+            $results = self::$imdbApi->search($titleToSearch, [
+                'category' => 'tt', // Films only
+                'curlHeaders' => ['Accept-Language: fr-FR,fr,en;q=0.5']
+            ]);
 
-            foreach ($results as $title)
+            if (empty($results) || empty($results['results'])) {
+                self::$cachedURLs[$this->filename] = '';
+                return false;
+            }
+
+            foreach ($results['results'] as $result)
             {
-                $genre = $title->genre();
-
-                switch ($genre) {
-                    case '':
-                    case 'Court-métrage':
-                    case 'Talk-show':
-                        continue 2;
-
-                    default:
-                        break;
+                // Skip non-film results
+                if (empty($result['imdb'])) {
+                    continue;
                 }
 
-                if ($title->votes() == 0)
-                    continue;
+                // Get film details to check genre
+                $filmDetails = self::$imdbApi->film($result['imdb'], [
+                    'curlHeaders' => ['Accept-Language: fr-FR,fr,en;q=0.5'],
+                    'cache' => false
+                ]);
 
-                self::$cachedURLs[$this->filename] = $title->main_url();
-                return $title;
+                $genres = $filmDetails['genres'] ?? [];
+                
+                // Skip certain genres
+                $skipGenres = ['Court-métrage', 'Talk-show', 'Short', 'Talk-Show'];
+                $skip = false;
+                foreach ($genres as $genre) {
+                    if (in_array($genre, $skipGenres)) {
+                        $skip = true;
+                        break;
+                    }
+                }
+                
+                if ($skip) {
+                    continue;
+                }
+
+                // Skip if no votes
+                if (empty($filmDetails['rating_votes'])) {
+                    continue;
+                }
+
+                $url = 'https://www.imdb.com/title/' . $result['imdb'] . '/';
+                self::$cachedURLs[$this->filename] = $url;
+                return $result['imdb'];
             }
         } catch (Exception $e) {
             echo 'Problème recherche IMDB: ',  $e->getMessage(), "\n";
