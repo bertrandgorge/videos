@@ -2,7 +2,10 @@
     "name": "bertrand/videos",
     "type": "project",
     "require": {
-        "hmerritt/imdb-api": "^1.2"
+        "php-tmdb/api": "^4.1",
+        "symfony/event-dispatcher": "^7.4",
+        "symfony/http-client": "^7.4",
+        "nyholm/psr7": "^1.8"
     },
     "authors": [
         {
@@ -12,7 +15,8 @@
     ],
     "config": {
         "allow-plugins": {
-            "cweagans/composer-patches": true
+            "cweagans/composer-patches": true,
+            "php-http/discovery": true
         }
     }
 }

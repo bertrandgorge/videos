@@ -4,7 +4,7 @@ class imdb
 {
     static private $cachedURLs = array();
     static private $fp = null;
-    static private $imdbApi = null;
+    static private $tmdbClient = null;
     static private $columns = [];
 
     private $filename = '';
@@ -13,9 +13,52 @@ class imdb
     {
         $this->filename = trim($filename);
 
-        if (empty(self::$imdbApi))
+        if (empty(self::$tmdbClient))
         {
-            self::$imdbApi = new \hmerritt\Imdb();
+            $config = require __DIR__ . '/../config/tmdb.php';
+            
+            // Déterminer le type de token à utiliser
+            if (!empty($config['auth_type']) && $config['auth_type'] === 'bearer' && !empty($config['bearer_token'])) {
+                $token = new \Tmdb\Token\Api\BearerToken($config['bearer_token']);
+            } elseif (!empty($config['api_key'])) {
+                $token = $config['api_key'];
+            } else {
+                throw new Exception('Aucune clé API ou Bearer Token configuré dans config/tmdb.php');
+            }
+            
+            // Créer l'EventDispatcher
+            $eventDispatcher = new \Symfony\Component\EventDispatcher\EventDispatcher();
+            
+            // Créer le client
+            self::$tmdbClient = new \Tmdb\Client([
+                'api_token' => $token,
+                'secure' => true,
+                'event_dispatcher' => [
+                    'adapter' => $eventDispatcher
+                ]
+            ]);
+            
+            // Enregistrer les listeners requis
+            $requestListener = new \Tmdb\Event\Listener\RequestListener(
+                self::$tmdbClient->getHttpClient(), 
+                $eventDispatcher
+            );
+            $eventDispatcher->addListener(\Tmdb\Event\RequestEvent::class, $requestListener);
+            
+            // Listeners pour les headers
+            $apiTokenListener = new \Tmdb\Event\Listener\Request\ApiTokenRequestListener(
+                self::$tmdbClient->getToken()
+            );
+            $eventDispatcher->addListener(\Tmdb\Event\BeforeRequestEvent::class, $apiTokenListener);
+            
+            $acceptJsonListener = new \Tmdb\Event\Listener\Request\AcceptJsonRequestListener();
+            $eventDispatcher->addListener(\Tmdb\Event\BeforeRequestEvent::class, $acceptJsonListener);
+            
+            $jsonContentTypeListener = new \Tmdb\Event\Listener\Request\ContentTypeJsonRequestListener();
+            $eventDispatcher->addListener(\Tmdb\Event\BeforeRequestEvent::class, $jsonContentTypeListener);
+            
+            $userAgentListener = new \Tmdb\Event\Listener\Request\UserAgentRequestListener();
+            $eventDispatcher->addListener(\Tmdb\Event\BeforeRequestEvent::class, $userAgentListener);
         }
 
         imdb::getCachedURLs();
@@ -50,39 +93,49 @@ class imdb
 
     public function getFilmInfo($url = false)
     {
-        $imdbId = '';
+        $movieId = ''; // Peut être un ID TMDB ou IMDB
         $match = array();
+        $cachedFilm = array();
+
         if (!empty($url)) {
-            if (preg_match('@tt([0-9]+)@', $url, $match)) {
-                $imdbId = 'tt' . $match[1];
+            // Vérifier si c'est une URL TMDB
+            if (preg_match('@themoviedb\.org/movie/([0-9]+)@', $url, $match)) {
+                $movieId = $match[1]; // ID TMDB
+            }
+            // Vérifier si c'est un ID IMDB
+            elseif (preg_match('@tt([0-9]+)@', $url, $match)) {
+                $movieId = 'tt' . $match[1];
             }
             else
                 return ['ignored' => true, 'URL' => $this->filename];
         }
 
-        if (empty($imdbId))
-            $imdbId = $this->findFilmForFilename();
+        if (empty($movieId))
+            $movieId = $this->findFilmForFilename();
 
-        if ($imdbId == 'ignored')
+        if ($movieId == 'ignored')
             return ['ignored' => true, 'URL' => $this->filename];
 
-        if (empty($imdbId))
+        if (empty($movieId))
             return ['Not found' => true, 'URL' => $this->filename];
 
         $film = array();
 
-        if (is_scalar($imdbId))
+        if (is_scalar($movieId))
         {
-            $cacheFilename = __DIR__ . '/../cache/imdb' . str_replace('tt', '', $imdbId) . '.json';
+            // Cache filename basé sur l'ID (TMDB ou IMDB)
+            $cacheId = is_string($movieId) && strpos($movieId, 'tt') === 0 ? str_replace('tt', '', $movieId) : $movieId;
+            $cacheFilename = __DIR__ . '/../cache/imdb' . $cacheId . '.json';
             if (file_exists($cacheFilename))
             {
                 $cache = file_get_contents($cacheFilename);
                 if (!empty($cache))
                 {
                     $film = json_decode($cache, true);
+                    $cachedFilm = $film;
 
-                    if (empty($film['Acteurs'])) {
-                        echo "No actors for ".$imdbId."\n";
+                    if (empty($film['Réalisateur']) || empty($film['Acteurs']) || empty($film['URL'])) {
+                        echo "No actors for ".$movieId."\n";
                         $film = array(); // force re-fetch
                     }                    
                 }
@@ -90,60 +143,150 @@ class imdb
         }
 
         if (empty($film['URL'])) {
-            // Fetch from IMDB using new API
-            $filmData = self::$imdbApi->film($imdbId, [
-                'curlHeaders' => ['Accept-Language: fr-FR,fr,en;q=0.5'],
-                'cache' => false // We manage our own cache
-            ]);
+            // $movieId peut être soit un ID TMDB soit un ID IMDB (tt...)
+            try {
+                // Si c'est un ID IMDB, on cherche le film correspondant sur TMDB
+                if (is_string($movieId) && strpos($movieId, 'tt') === 0) {
 
-            if (empty($filmData) || empty($filmData['title'])) {
-                return ['Not found' => true, 'URL' => $this->filename];
-            }
+                    $titleToSearch = $this->cleanTitleBeforeSearch($this->filename);
 
-            echo "Getting IMDB info for ".$filmData['title']."\n";
+                    // Extract the year from filename if possible
+                    $year = null;
+                    if (preg_match('@(?:19|20)([0-9]{2})@', $titleToSearch, $matches)) {
+                        $year = $matches[0];
 
-            $film['URL'] = 'https://www.imdb.com/title/' . $imdbId . '/';
-            $film['Titre'] = $filmData['title'] ?? '';
-            $film['Titre FR'] = $filmData['title'] ?? '';
-            $film['Presse'] = str_replace('.', ',', $filmData['rating'] ?? '');
-            $film['Spectateurs'] = $filmData['rating_votes'] ?? '';
-            $film['metacriticRating'] = '';
-            $film['Mots clés'] = '';
-            $film['Pays'] = '';
-            $film['Genre'] = implode(', ', $filmData['genres'] ?? []);
-            $film['Poster URL'] = $filmData['poster'] ?? '';
-            $film['Durée'] = $filmData['length'] ?? '';
-            $film['Poster'] = '';
-            $film['Synopsis'] = $filmData['plot'] ?? '';
-            $film['ignored'] = false;
-            $film['Not found'] = false;
+                        // If year found, remove it from title to search
+                        $titleToSearch = trim(preg_replace('@(?:19|20)([0-9]{2})@', '', $titleToSearch));
+                    }
 
-            $directors = array();
-            if (!empty($filmData['cast'])) {
-                foreach ($filmData['cast'] as $castMember) {
-                    if (stripos($castMember['character'] ?? '', 'director') !== false || 
-                        stripos($castMember['character'] ?? '', 'réalisateur') !== false) {
-                        $directors[] = $castMember['actor'];
+                    $results = self::$tmdbClient->getSearchApi()->searchMovies($titleToSearch);
+                    $tmdbId = null;
+                    
+                    if (!empty($results['results'])) {
+                        // Chercher le film avec le bon ID IMDB
+                        foreach ($results['results'] as $result) {
+                            if ($result['adult']) {
+                                continue;
+                            }
+
+                            // If the year is specified, check it matches
+                            if (!empty($year) && isset($result['release_date']) && strpos($result['release_date'], $year) !== 0) {
+                                continue;
+                            }
+
+                            if (isset($result['id'])) {
+                                $movieDetails = self::$tmdbClient->getMoviesApi()->getMovie($result['id']);
+                                if (isset($movieDetails['imdb_id']) && $movieDetails['imdb_id'] === $movieId) {
+                                    $tmdbId = $result['id'];
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Si pas trouvé par IMDB ID, prendre le premier résultat
+                        if (empty($tmdbId) && !empty($results['results'][0]['id'])) {
+                            $tmdbId = $results['results'][0]['id'];
+                        }
+                    }
+                    
+                    if (empty($tmdbId)) {
+                        if (!empty($cachedFilm))
+                            return $cachedFilm;
+
+                        return ['Not found' => true, 'URL' => $this->filename];
+                    }
+                } else {
+                    // C'est un ID TMDB direct
+                    $tmdbId = $movieId;
+                }
+
+                // Store the URL in the cache
+                self::$cachedURLs[$this->filename] = 'https://www.themoviedb.org/movie/' . $tmdbId;
+
+                // Récupérer les détails du film
+                $movie = self::$tmdbClient->getMoviesApi()->getMovie($tmdbId, ['append_to_response' => 'credits']);
+                
+                if (empty($movie)) {
+                    return ['Not found' => true, 'URL' => $this->filename];
+                }
+
+                echo "Getting TMDB info for ".$movie['title']."\n";
+
+                // Construire l'URL IMDB
+                $imdbIdFromTmdb = $movie['imdb_id'] ?? '';
+                $film['URL'] = !empty($imdbIdFromTmdb) ? 'https://www.imdb.com/title/' . $imdbIdFromTmdb . '/' : '';
+                if (empty($film['URL'])) {
+                    $film['URL'] = 'https://www.themoviedb.org/movie/' . $tmdbId;
+                }
+
+                $film['Titre'] = $movie['original_title'] ?? $movie['title'] ?? '';
+                $film['Titre FR'] = $movie['title'] ?? '';
+                $film['Presse'] = str_replace('.', ',', $movie['vote_average'] ?? '');
+                $film['Spectateurs'] = $movie['vote_count'] ?? '';
+                $film['metacriticRating'] = '';
+                $film['Mots clés'] = '';
+                
+                // Pays
+                $countries = [];
+                if (!empty($movie['production_countries'])) {
+                    foreach ($movie['production_countries'] as $country) {
+                        $countries[] = $country['name'];
                     }
                 }
-            }
-            $film['Réalisateur'] = implode(', ', $directors);
+                $film['Pays'] = implode(', ', $countries);
+                
+                // Genres
+                $genres = [];
+                if (!empty($movie['genres'])) {
+                    foreach ($movie['genres'] as $genre) {
+                        $genres[] = $genre['name'];
+                    }
+                }
+                $film['Genre'] = implode(', ', $genres);
+                
+                // Poster
+                $posterPath = $movie['poster_path'] ?? '';
+                $film['Poster URL'] = !empty($posterPath) ? '=IMAGE("https://image.tmdb.org/t/p/w500' . $posterPath . '")': '';
+                $film['Durée'] = $movie['runtime'] ?? '';
+                $film['Poster'] = '';
+                $film['Synopsis'] = $movie['overview'] ?? '';
+                $film['ignored'] = false;
+                $film['Not found'] = false;
 
-            $actors = array();
-            if (!empty($filmData['cast'])) {
-                $count = 0;
-                foreach ($filmData['cast'] as $castMember) {
-                    if ($count >= 5) break; // Limit to 5 actors
-                    if (stripos($castMember['character'] ?? '', 'director') === false) {
-                        $actors[] = $castMember['actor'];
+                // Réalisateurs
+                $directors = [];
+                if (!empty($movie['credits']['crew'])) {
+                    foreach ($movie['credits']['crew'] as $crew) {
+                        if ($crew['job'] === 'Director') {
+                            $directors[] = $crew['name'];
+                        }
+                    }
+                }
+                $film['Réalisateur'] = implode(', ', $directors);
+
+                // Acteurs (top 5)
+                $actors = [];
+                if (!empty($movie['credits']['cast'])) {
+                    $count = 0;
+                    foreach ($movie['credits']['cast'] as $cast) {
+                        if ($count >= 5) break;
+                        $actors[] = $cast['name'];
                         $count++;
                     }
                 }
+                $film['Acteurs'] = implode(', ', $actors);
+                
+                // Année (extraire de release_date)
+                $releaseDate = $movie['release_date'] ?? '';
+                $film['Année'] = !empty($releaseDate) ? substr($releaseDate, 0, 4) : '';
+            } catch (Exception $e) {
+                echo 'Erreur TMDB: ' . $e->getMessage() . "\n";
+                return ['Not found' => true, 'URL' => $this->filename];
             }
-            $film['Acteurs'] = implode(', ', $actors);
-            $film['Année'] = $filmData['year'] ?? '';
 
-            $cacheFilename = __DIR__ . '/../cache/imdb' . str_replace('tt', '', $imdbId) . '.json';
+            // Sauvegarder dans le cache
+            $cacheId = is_string($movieId) && strpos($movieId, 'tt') === 0 ? str_replace('tt', '', $movieId) : $movieId;
+            $cacheFilename = __DIR__ . '/../cache/imdb' . $cacheId . '.json';
 
             try {
                 file_put_contents($cacheFilename, json_encode($film, JSON_THROW_ON_ERROR));
@@ -188,56 +331,79 @@ class imdb
         {
             $url = self::$cachedURLs[$this->filename];
 
+            if (empty($url))
+                return false;
+
             $movieId = false;
             $matches = array();
-            if (preg_match('@tt([0-9]+)[/]*@', $url, $matches))
+            
+            // Vérifier si c'est une URL TMDB
+            if (preg_match('@themoviedb\.org/movie/([0-9]+)@', $url, $matches)) {
+                $movieId = $matches[1]; // ID TMDB
+            }
+            // Vérifier si c'est un ID IMDB (ancien cache)
+            elseif (preg_match('@tt([0-9]+)[/]*@', $url, $matches)) {
                 $movieId = 'tt' . $matches[1];
-            else
+            }
+            else {
                 return 'ignored';
+            }
 
             return $movieId;
         }
 
-        $titleToSearch = trim($this->filename);
-        $titleToSearch = preg_replace('@\.(avi|mkv|mp4|ts|m2ts)@', '', $titleToSearch); // remove the extension
-        $titleToSearch = preg_replace('@[0-9]+p.*$@', '', $titleToSearch); // remove the resolution
-        $titleToSearch = preg_replace('@\(?([0-9]{4})\)?.*@', ' $1', $titleToSearch); // remove the year
-        $titleToSearch = preg_replace('@\[[^]]+\]@', '', $titleToSearch); // remove anything in []
-        $titleToSearch = str_replace('.', ' ', trim($titleToSearch));
+        $titleToSearch = $this->cleanTitleBeforeSearch($this->filename);
 
+        // Extract the year from filename if possible
+        $year = null;
+        if (preg_match('@(?:19|20)([0-9]{2})@', $titleToSearch, $matches)) {
+            $year = $matches[0];
+
+            // If year found, remove it from title to search
+            $titleToSearch = trim(preg_replace('@(?:19|20)([0-9]{2})@', '', $titleToSearch));
+        }
+        
         try {
-            $results = self::$imdbApi->search($titleToSearch, [
-                'category' => 'tt', // Films only
-                'curlHeaders' => ['Accept-Language: fr-FR,fr,en;q=0.5']
-            ]);
+            $results = self::$tmdbClient->getSearchApi()->searchMovies($titleToSearch);
 
-            if (empty($results) || empty($results['results'])) {
+            if (empty($results['results'])) {
                 self::$cachedURLs[$this->filename] = '';
                 return false;
             }
 
             foreach ($results['results'] as $result)
             {
-                // Skip non-film results
-                if (empty($result['imdb'])) {
+                // Skip if no ID
+                if (empty($result['id'])) {
                     continue;
                 }
 
-                // Get film details to check genre
-                $filmDetails = self::$imdbApi->film($result['imdb'], [
-                    'curlHeaders' => ['Accept-Language: fr-FR,fr,en;q=0.5'],
-                    'cache' => false
-                ]);
+                // Get full movie details including IMDB ID
+                try {
+                    $movie = self::$tmdbClient->getMoviesApi()->getMovie($result['id']);
+                } catch (Exception $e) {
+                    continue;
+                }
 
-                $genres = $filmDetails['genres'] ?? [];
-                
+                // Skip adult movies
+                if ($movie['adult']) {
+                    continue;
+                }
+
+                // If the year is specified, check it matches
+                if (!empty($year) && isset($result['release_date']) && strpos($result['release_date'], $year) !== 0) {
+                    continue;
+                }
+
                 // Skip certain genres
-                $skipGenres = ['Court-métrage', 'Talk-show', 'Short', 'Talk-Show'];
+                $skipGenres = ['Short', 'Talk Show'];
                 $skip = false;
-                foreach ($genres as $genre) {
-                    if (in_array($genre, $skipGenres)) {
-                        $skip = true;
-                        break;
+                if (!empty($movie['genres'])) {
+                    foreach ($movie['genres'] as $genre) {
+                        if (in_array($genre['name'], $skipGenres)) {
+                            $skip = true;
+                            break;
+                        }
                     }
                 }
                 
@@ -246,16 +412,18 @@ class imdb
                 }
 
                 // Skip if no votes
-                if (empty($filmDetails['rating_votes'])) {
+                if (empty($movie['vote_count']) || $movie['vote_count'] < 10) {
                     continue;
                 }
 
-                $url = 'https://www.imdb.com/title/' . $result['imdb'] . '/';
-                self::$cachedURLs[$this->filename] = $url;
-                return $result['imdb'];
+                // Stocker l'URL TMDB dans le cache pour éviter les recherches futures
+                $tmdbUrl = 'https://www.themoviedb.org/movie/' . $result['id'];
+                self::$cachedURLs[$this->filename] = $tmdbUrl;
+                
+                return $result['id']; // Return TMDB ID
             }
         } catch (Exception $e) {
-            echo 'Problème recherche IMDB: ',  $e->getMessage(), "\n";
+            echo 'Problème recherche TMDB: ',  $e->getMessage(), "\n";
             print_r($this->filename);
             exit();
         }
@@ -356,13 +524,34 @@ class imdb
 
         if (!empty($film['Not found']))
         {
-            imdb::writeRow(($film['Nom du fichier'] ?? '') . "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t" . ($film['Date d\'ajout']  ?? '') . "\n");
+            imdb::writeRow(($film['Nom du fichier'] ?? $film['URL']) . "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t" . ($film['Date d\'ajout']  ?? '') . "\n");
             return;
         }
+
+        // if the poster url is set, convert it to IMAGE formula
+        if (!empty($film['Poster URL']) && strpos(strtoupper($film['Poster URL']), '=IMAGE') === false)
+            $film['Poster URL'] = '=IMAGE("' . $film['Poster URL'] . '")';
 
         foreach (self::$columns as $key)
             imdb::writeRow(($film[$key] ?? '') . "\t");
 
+        if (empty($film['URL']) && empty($film['Nom du fichier']))
+            return;
+
         imdb::writeRow("\n", true);
+    }
+
+    function cleanTitleBeforeSearch($titleToSearch)
+    {
+        $titleToSearch = preg_replace('@\.(avi|mkv|mp4|ts|m2ts)@', '', $titleToSearch); // remove the extension
+        $titleToSearch = preg_replace('@[0-9]+p.*$@', '', $titleToSearch); // remove the resolution
+        $titleToSearch = preg_replace('@\(?([0-9]{4})\)?.*@', ' $1', $titleToSearch); // remove the year
+        $titleToSearch = preg_replace('@\[[^]]+\]@', '', $titleToSearch); // remove anything in []
+        $titleToSearch = str_replace('.', ' ', trim($titleToSearch));
+
+        // Remove everything after 1080p, 720p, etc.
+        $titleToSearch = preg_replace('@(1080p|720p|480p|2160p|4K).*$@i', '', $titleToSearch);
+
+        return $titleToSearch;
     }
 }
